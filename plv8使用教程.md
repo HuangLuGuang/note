@@ -138,3 +138,153 @@ INSERT 0 1
 - `plv8_float4array` ->`float4[]`
 - `plv8_float8array` ->`float8[]`
 
+```sql
+--求和函数
+CREATE FUNCTION int4sum(ary plv8_int4array) RETURNS int8 AS
+$$
+	var sum=0;
+	for (var i=0; i < ary.length; i++) {
+		sum += ary[i];
+	}
+	return sum;
+$$ LANGUAGE plv8 IMMUTABLE STRICT;
+
+--使用该函数
+select int4sum(ARRAY[1, 2, 3, 4, 5]);
+```
+
+`plv8.elog`可以向客户端或日志文件打印日志，日志级别如下：
+
+- `DEBUG5`
+
+- `DEBUG4`
+
+- `DEBUG3`
+
+- `DEBUG2`
+
+- `DEBUG1`
+
+- `LOG`
+
+- `INFO`
+
+- `NOTICE`
+
+- `WARNING`
+
+- `ERROR`
+
+  例如:
+
+  ```sql
+  DO 
+  $$
+  	var msg = 'world';
+  	plv8.elog(NOTICE, 'Hello', `${msg}!`);
+  $$ language plv8;
+  ```
+
+##### 访问数据库
+
+```
+plv8.execute(sql [, args])
+```
+
+执行SQL语句并检索结果。该`sql`参数是必需的，而`args`参数是一个可选`array`含在SQL查询传递任何参数。对于`SELECT`查询，返回值是`array` 的`objects`。每个`object`代表一行，`object`属性映射为列名。对于非`SELECT`查询，返回结果是受影响的行数。
+
+例如:
+
+```sql
+-- 查询
+DO 
+$$  
+	var json_result = plv8.execute('SELECT * FROM test_tb');
+	plv8.elog(NOTICE, JSON.stringify(json_result), 'inline', 'code');
+$$ LANGUAGE plv8;
+-- 更新
+DO 
+$$  
+	var json_result = plv8.execute('SELECT * FROM test_tb');
+	plv8.elog(NOTICE, JSON.stringify(json_result), 'inline', 'code');
+$$ LANGUAGE plv8;
+```
+
+### `plv8.prepare`
+
+```
+plv8.prepare(sql [, typenames])
+```
+
+打开或创建准备好的声明。该`typename`参数是`array` 每个元素`string`对应于每个`bind`参数的PostgreSQL类型名称的参数。返回值是该`PreparedPlan`类型的对象。`plan.free()`在离开函数之前必须释放此对象。
+
+例如
+
+```sql
+DO
+$$
+	var plan = plv8.prepare('SELECT * FROM test_tb WHERE id = $1', [ 'character' ]);
+	var rows = plan.execute([ '3' ]);
+	for (var i = 0; i < rows.length; i++) {
+	  plv8.elog(NOTICE, JSON.stringify(rows[i]), i);
+	}
+	// 释放
+	plan.free();
+$$ language plv8;
+```
+
+### `PreparedPlan.cursor`
+
+```
+PreparedPlan.cursor([ args ])
+```
+
+从准备好的语句中打开游标。该`args`参数是一样的东西将需要`plv8.execute()`和`PreparedPlan.execute()`。返回的对象是类型`Cursor`。必须`Cursor.close()` 在离开功能之前将其关闭。
+
+```sql
+DO
+$$
+	var plan = plv8.prepare('SELECT * FROM test_tb WHERE id = $1', [ 'character' ]);
+	var cursor = plan.cursor([ '2' ]);
+	var row;
+	while(row = cursor.fetch()) {
+			plv8.elog(NOTICE, JSON.stringify(row));  
+	}
+	// 释放
+  	cursor.close();
+	plan.free();
+$$ language plv8;
+```
+
+### `plv8.subtransaction`
+
+```
+plv8.subtransaction(func)
+```
+
+`plv8.execute()`每次执行时都会创建一个子事务。如果需要原子操作，则需要调用`plv8.subtransaction()`以创建子事务块。
+
+```
+DO
+$$
+try {
+		 plv8.subtransaction(function(){
+			 plv8.execute(`insert into test_tb (id, name) values('4','hhxy1')`);
+			 plv8.execute(`insert into test_tb (id, name) values(1/0,'hhxy1')`);
+		});
+	 }catch(e){
+			plv8.elog(ERROR, e, 'rollback')
+			}
+$$ language plv8;
+--或者
+DO
+$$
+try {
+	 plv8.execute(`insert into test_tb (id, name) values('4','hhxy1')`);
+	 plv8.execute(`insert into test_tb (id, name) values(1/0,'hhxy1');`);
+	 }catch(e){
+			plv8.elog(ERROR, e, 'rollback')
+			}
+$$ language plv8;
+```
+
