@@ -264,7 +264,7 @@ plv8.subtransaction(func)
 
 `plv8.execute()`每次执行时都会创建一个子事务。如果需要原子操作，则需要调用`plv8.subtransaction()`以创建子事务块。
 
-```
+```sql
 DO
 $$
 try {
