@@ -80,8 +80,9 @@ OUTPUT_DIR  /data
 ##### 使用生成的sql创建数据库表
 
 ```shell
-su postgresql
+su postgres
 psql
+# 先切换到数据库
 \c test_tb
 \i /path/to/local/data/huanglg.sql
 ```
